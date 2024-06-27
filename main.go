@@ -121,40 +121,16 @@ func logData(h http.Handler) http.Handler {
 }
 
 func proxyRequest(w http.ResponseWriter, r *http.Request) {
-	originalURL := *r.URL
-
-	{
-		originalURL.Scheme = parsedURL.Scheme
-		originalURL.User = parsedURL.User
-		originalURL.Host = parsedURL.Host
+	reverseProxy := &httputil.ReverseProxy{
+		Director: func(r *http.Request) {
+			r.URL.Host = parsedURL.Host
+			r.URL.User = parsedURL.User
+			r.URL.Scheme = parsedURL.Scheme
+		},
+		Transport: nil,
 	}
 
-	req, err := http.NewRequest(r.Method, originalURL.String(), r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	for k := range r.Header {
-		req.Header.Add(k, r.Header.Get(k))
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	defer resp.Body.Close()
-
-	w.WriteHeader(resp.StatusCode)
-	for k := range resp.Header {
-		w.Header().Add(k, resp.Header.Get(k))
-	}
-
-	buffer := new(bytes.Buffer)
-	buffer.ReadFrom(resp.Body)
-	buffer.WriteTo(w)
+	reverseProxy.ServeHTTP(w, r)
 }
 
 // MARK: - ResponseBuffer
