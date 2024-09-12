@@ -113,34 +113,25 @@ func logData(h http.Handler) http.Handler {
 			return
 		}
 
+		reqBytes, err := httputil.DumpRequest(r, true)
+		defer func() {
+			if err != nil {
+				lgr.Default().Logf("[ERROR] request body dumped with err: %v", err)
+			}
+		}()
+
+		headers := ""
+		for k, v := range w.Header() {
+			headers += fmt.Sprintf("%v=%v\n", k, strings.Join(v, "; "))
+		}
+
 		rb := &responseBuffer{w: w, buf: new(bytes.Buffer)}
 		h.ServeHTTP(rb, r)
 		respBytes := rb.buf.Bytes()
 
-		defer func() {
-			reqBytes, err := httputil.DumpRequest(r, true)
-			if err != nil {
-				lgr.Default().Logf("[ERROR] httputil dump request error: %v. fallback here \n", err)
-
-				reqBuffer := new(bytes.Buffer)
-				reqBuffer.WriteString("[" + r.Method + "] " + r.URL.String() + "\n")
-				for k, v := range r.Header {
-					reqBuffer.WriteString(fmt.Sprintf("%v: %v\n", k, v))
-				}
-				reqBuffer.ReadFrom(r.Body)
-
-				reqBytes = reqBuffer.Bytes()
-			}
-
-			headers := ""
-			for k, v := range w.Header() {
-				headers += fmt.Sprintf("%v=%v\n", k, strings.Join(v, "; "))
-			}
-
-			lgr.Default().Logf(
-				"[INFO] Handled:\n\nRequest:\n%s\n\nResponse:\n%s%v\n---",
-				string(reqBytes), headers, string(respBytes))
-		}()
+		lgr.Default().Logf(
+			"[INFO] Handled:\n\nRequest:\n%s\n\nResponse:\n%s%v\n---",
+			string(reqBytes), headers, string(respBytes))
 
 		w.Write(respBytes)
 	})
