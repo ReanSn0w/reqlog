@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,10 +25,12 @@ var (
 		Debug      bool   `long:"debug" env:"DEBUG" description:"Enable debug prints"`
 		ListenExit bool   `short:"x" long:"listen-exit" env:"LISTEN_EXIT"`
 		Port       int    `short:"p" long:"port" env:"PORT" default:"8080" desctiption:"Port to listen on"`
+		PathRegexp string `long:"pathfilter" env:"PATH_FILTER" default:"*" description:"path filter by regexp"`
 		Dest       string `short:"d" long:"dest" env:"DEST" default:"localhost:3000" description:"Address to pass"`
 	}{}
 
 	parsedURL *url.URL
+	filter    *regexp.Regexp
 )
 
 func main() {
@@ -44,6 +47,12 @@ func main() {
 	}
 
 	config.Print(log, "ReqLog", revision, opts)
+
+	filter, err = regexp.Compile(opts.PathRegexp)
+	if err != nil {
+		log.Logf("[ERROR] invalid regexp filter: %v", err)
+		os.Exit(2)
+	}
 
 	parsedURL, err = url.Parse(opts.Dest)
 	if err != nil {
@@ -99,6 +108,11 @@ func handler() http.Handler {
 
 func logData(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !filter.Match([]byte(r.URL.Path)) {
+			h.ServeHTTP(w, r)
+			return
+		}
+
 		rb := &responseBuffer{w: w, buf: new(bytes.Buffer)}
 		h.ServeHTTP(rb, r)
 		respBytes := rb.buf.Bytes()
